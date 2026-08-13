@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "docwarden"
-version = "0.1.0"
+version = "0.1.1"
 description = "Configurable Markdown prose-density and docs-vs-code drift linting."
 authors = ["Tomasz Osiński"]
 license = "MIT"

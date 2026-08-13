@@ -88,3 +88,29 @@ def test_extract_settings_claims_word_form():
 
     keys = {c.key for c in claims}
     assert "ARCHIVE_SIGNATURES_MIN_DOCS" in keys
+
+
+def test_extract_settings_claims_word_form_does_not_cross_into_a_markdown_link():
+    # Real repo prose: an unparseable value ("OFF") followed by an ADR link
+    # reference, soft-wrapped. The link's "0007" must not be mistaken for
+    # the claimed default just because it's the nearest number after "domyślnie".
+    doc = parse(
+        "przez `LAWSUIT_PHOTOS_TO_MODEL` (domyślnie OFF,\n"
+        "[ADR 0007](docs/adr/0007-foo.md)) — reszta zdania.\n"
+    )
+
+    claims = extract_settings_claims(doc)
+
+    assert not any(c.key == "LAWSUIT_PHOTOS_TO_MODEL" for c in claims)
+
+
+def test_extract_settings_claims_word_form_across_soft_wrapped_source_line():
+    # Manually-wrapped prose (this repo's actual SKILL.md style) puts "default"
+    # at the end of one source line and the value at the start of the next —
+    # still one paragraph/inline token, joined by a soft line break.
+    doc = parse("(`aggregate`, `ARCHIVE_SIGNATURES_MIN_DOCS`, default\n**2**): reszta zdania.\n")
+
+    claims = extract_settings_claims(doc)
+
+    keys = {c.key for c in claims}
+    assert "ARCHIVE_SIGNATURES_MIN_DOCS" in keys

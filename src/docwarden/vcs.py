@@ -35,10 +35,19 @@ def tracked_files(
     (paths=--paths, suffixes={.md}), drift's codebase index (paths=None,
     suffixes=code extensions), and drift's path index (paths=None,
     suffixes=None). ``paths=None`` always means "whole repo", never "nothing".
+
+    ``paths`` entries are resolved against the process's cwd (normal shell
+    semantics — the same way a bare ``git ls-files <path>`` would from
+    wherever the caller happens to be standing), then re-expressed as
+    absolute paths before being handed to ``git -C root``. Passing them
+    through unresolved would be wrong whenever cwd != root: ``-C`` makes
+    git evaluate relative pathspecs against ``root`` instead, so e.g.
+    ``../CLAUDE.md`` typed from a subdirectory of the repo would resolve
+    against the wrong base and often land outside the repo entirely.
     """
     args = ["git", "-C", str(root), "ls-files", "-z"]
     if paths:
-        args.extend(paths)
+        args.extend(str(Path(p).resolve()) for p in paths)
     result = subprocess.run(args, check=True, capture_output=True, text=True)
 
     found: list[Path] = []

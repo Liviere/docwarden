@@ -37,12 +37,22 @@ def test_tracked_files_filters_by_suffix(make_repo):
     assert found == {"CLAUDE.md"}
 
 
-def test_tracked_files_scopes_by_paths(make_repo):
+def test_tracked_files_scopes_by_paths(make_repo, monkeypatch):
     root = make_repo({"CLAUDE.md": "x", "sub/inner.md": "x", "other/inner.md": "x"})
+    monkeypatch.chdir(root)
 
     found = {p.relative_to(root).as_posix() for p in tracked_files(root, paths=["sub"])}
 
     assert found == {"sub/inner.md"}
+
+
+def test_tracked_files_resolves_paths_relative_to_process_cwd_not_root(make_repo, monkeypatch):
+    root = make_repo({"CLAUDE.md": "x", "scripts/tool.py": "x", "sub/inner.md": "x"})
+    monkeypatch.chdir(root / "scripts")
+
+    found = {p.relative_to(root).as_posix() for p in tracked_files(root, paths=["../CLAUDE.md"])}
+
+    assert found == {"CLAUDE.md"}
 
 
 def test_tracked_files_ignores_untracked_files(make_repo):

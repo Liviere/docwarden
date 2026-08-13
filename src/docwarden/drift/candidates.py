@@ -18,7 +18,7 @@ _DEFAULT_PAREN = re.compile(
     r"`([A-Z][A-Z0-9_]*)`\s*\((-?\d+(?:[.,]\d+)?|true|false|\"[^\"]{0,40}\")\)"
 )
 _DEFAULT_WORD = re.compile(
-    r"`([A-Z][A-Z0-9_]*)`[^`\n]{0,60}?\b(?:default|domy[sś]ln\w*)\b[^`\n]{0,20}?"
+    r"`([A-Z][A-Z0-9_]*)`[^`\[]{0,60}?\b(?:default|domy[sś]ln\w*)\b[^`\[]{0,20}?"
     r"(?:\*\*)?(-?\d+(?:[.,]\d+)?|true|false)(?:\*\*)?",
     re.IGNORECASE,
 )

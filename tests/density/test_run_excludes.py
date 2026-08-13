@@ -2,13 +2,14 @@ from docwarden.config import DensityConfig
 from docwarden.density import run
 
 
-def test_run_respects_excludes(make_repo):
+def test_run_respects_excludes(make_repo, monkeypatch):
     root = make_repo(
         {
             "docs/a.md": "**Almost entirely bold text right here** but not quite.\n",
             "vendor/lib.md": "**Also almost entirely bold text right here** yes.\n",
         }
     )
+    monkeypatch.chdir(root)
     config = DensityConfig(bold_ratio_threshold=0.25)
 
     findings = run(["."], root, config, excludes=["vendor/*"])
