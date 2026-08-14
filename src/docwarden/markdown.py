@@ -51,3 +51,28 @@ def iter_inline_tokens(tokens: list[Token]) -> Iterator[Token]:
     for token in tokens:
         if token.type == "inline":
             yield token
+
+
+def iter_inline_tokens_with_row_head(tokens: list[Token]) -> Iterator[tuple[Token, str | None]]:
+    """Same walk as iter_inline_tokens, but each token is paired with the raw
+    content of the FIRST cell of its table row (None outside a table).
+
+    Reference tables document one subject per row and name it in the leading
+    cell, so that cell is the only reliable answer to "what is this row about"
+    — a rule reading the description alone attributes it to whatever name the
+    prose happened to cite last. markdown-it-py emits a flat stream, so row and
+    cell boundaries have to be tracked from the open/close tokens.
+    """
+    row_head: str | None = None
+    cell_index = -1
+    for token in tokens:
+        if token.type == "tr_open":
+            row_head, cell_index = None, -1
+        elif token.type in ("td_open", "th_open"):
+            cell_index += 1
+        elif token.type == "tr_close":
+            row_head, cell_index = None, -1
+        elif token.type == "inline":
+            if cell_index == 0:
+                row_head = token.content
+            yield token, row_head

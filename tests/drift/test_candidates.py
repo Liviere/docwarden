@@ -40,6 +40,18 @@ def test_classify_rejects_placeholder_and_glob_tokens():
     assert classify_candidate("services/agent/app/{main,crm_twenty}.py") is None
 
 
+def test_classify_rejects_a_bare_extension_chain():
+    # Prose names a CLASS of artifacts by its suffix ("the .ocr.txt next to
+    # each PDF") — there is no stem, so there is no file to resolve. Compare
+    # `x.ocr.txt`, which does name one.
+    assert classify_candidate(".ocr.txt") is None
+    assert classify_candidate(".result.json") is None
+    assert classify_candidate(".ocr.manifest.json") is None
+    assert classify_candidate("x.ocr.txt") == "path"
+    # A dotted path with a directory still names a real place.
+    assert classify_candidate(".claude/settings.local.json") == "path"
+
+
 def test_extract_symbol_candidates_from_code_inline_tokens():
     doc = parse("Patrz `_python_identifiers` oraz `ADR` i `client_folders.py`.\n")
 
@@ -113,6 +125,46 @@ def test_extract_settings_claims_word_form_does_not_cross_into_a_markdown_link()
     claims = extract_settings_claims(doc)
 
     assert not any(c.key == "LAWSUIT_PHOTOS_TO_MODEL" for c in claims)
+
+
+def test_extract_settings_claims_drops_a_default_the_table_row_does_not_own():
+    # A reference table documents ONE key per row. When the description cell
+    # cites a second key ("same class of change as X"), the value that follows
+    # is not attributable — neither to the cited key (it is not its default)
+    # nor to the row (proximity says otherwise). Nothing is claimed.
+    doc = parse(
+        "| Flaga | Opis |\n"
+        "| --- | --- |\n"
+        "| `CASE_FOLDER_ROUTING` | ta sama klasa zmiany co `FLOW_NAME_BY_FLOW_DATE`. "
+        "Default **false** = rollback |\n"
+    )
+
+    assert extract_settings_claims(doc) == []
+
+
+def test_extract_settings_claims_keeps_a_table_row_default_about_its_own_key():
+    doc = parse(
+        "| Flaga | Opis |\n"
+        "| --- | --- |\n"
+        "| `FOLDER_TREE_MAX_DEPTH` | głębokość drzewa, `FOLDER_TREE_MAX_DEPTH` default **2** |\n"
+    )
+
+    claims = extract_settings_claims(doc)
+
+    assert [(c.key, c.claimed_value) for c in claims] == [("FOLDER_TREE_MAX_DEPTH", "2")]
+
+
+def test_extract_settings_claims_word_form_stops_at_a_word_valued_default():
+    # "default ON" states the default in words. Without consuming it the
+    # window scans on and swallows the next numeral it meets — here the "(1)"
+    # opening an enumeration — producing a claim of `=1` out of thin air.
+    doc = parse(
+        "(za flagą `AI_GATEWAY_ATTACHMENTS_ENABLED`, default ON): (1) **front robi de-inline**\n"
+    )
+
+    claims = extract_settings_claims(doc)
+
+    assert not any(c.key == "AI_GATEWAY_ATTACHMENTS_ENABLED" for c in claims)
 
 
 def test_extract_settings_claims_word_form_across_soft_wrapped_source_line():

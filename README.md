@@ -8,7 +8,7 @@ variables, or config defaults that no longer match reality).
 
 ```toml
 [tool.poetry.dependencies]
-docwarden = { git = "https://github.com/Liviere/docwarden", tag = "v0.2.0" }
+docwarden = { git = "https://github.com/Liviere/docwarden", tag = "v0.3.0" }
 ```
 
 ## Usage
@@ -45,6 +45,22 @@ because the oracles differ in kind: an environment variable has a closed set of 
 sites, whereas prose legitimately cites third-party symbols the project depends on but never
 declares — and no index will ever contain those. Reporting both at the same severity buries the
 verifiable rule under the unverifiable one.
+
+### What the rules deliberately stay silent about
+
+Each exception below buys precision with recall, because a rule nobody trusts is a rule nobody acts
+on. All three were measured against a 17-file corpus before being added.
+
+- **A stemless token is not a path.** `` `.ocr.txt` `` names a class of artifacts, not a file, so it
+  is never resolved. Costs: a dotfile cited without its directory (`` `.eslintrc.json` ``).
+- **A trailing segment sequence of a known variable is not dead.** Prose spells `LAWSUIT_PHOTOS_MAX_EDGE`
+  out once and writes `` `MAX_EDGE` `` afterwards. The `_` boundary is required, so `MAXEDGE` still
+  reports. Costs: a genuinely dead short name while any longer name ends the same way.
+- **A default stated inside a keyed table row must be about that row's key.** A description cell
+  citing a sibling flag ("same class of change as `X`") otherwise hands `X` the row's default.
+  Unattributable claims are dropped rather than reattached — reattaching was measured to remove
+  2 false claims and invent 5. `default ON` / `OFF` is consumed and dropped too: left unmatched, the
+  search window scans past it and reports the next numeral it finds.
 
 The environment oracle reads assignments (`NAME=`, `NAME:`, `ENV NAME=`, compose list entries),
 shell references (`$NAME`, `${NAME}`) and n8n expression references (`$env.NAME`) from every file

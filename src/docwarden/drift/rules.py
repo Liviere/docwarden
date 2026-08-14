@@ -11,6 +11,19 @@ from docwarden.findings import Finding
 from docwarden.markdown import MarkdownDocument
 
 
+def _is_shorthand_for_a_known_name(candidate: str, known: set[str]) -> bool:
+    """True when the candidate is a trailing SEGMENT SEQUENCE of a name we do
+    know — `MAX_EDGE` inside `LAWSUIT_PHOTOS_MAX_EDGE`. Prose spells a variable
+    out once and shortens it afterwards, which is a reference, not a second
+    variable. The `_` boundary is what makes this safe: without it every name
+    ending in a common word would switch the rule off (`MAXEDGE` must still
+    report). Costs us a genuinely dead short name whenever some longer name
+    ends the same way — the same precision-for-recall trade as import indexing.
+    """
+    tail = "_" + candidate
+    return any(name.endswith(tail) for name in known)
+
+
 def check_dead_symbols(
     rel_path: str,
     doc: MarkdownDocument,
@@ -32,6 +45,11 @@ def check_dead_symbols(
     ``drift/dead-symbol`` and is meant to be run advisory (see ``Config.advisory``).
     """
     known_env = env_index or set()
+    known_full_names = (
+        known_env
+        | set(settings_index)
+        | {name for name in codebase_index.names if name.isupper()}
+    )
     findings = []
     for candidate in extract_symbol_candidates(doc):
         if candidate.kind == "path":
@@ -42,6 +60,8 @@ def check_dead_symbols(
         )
         if candidate.kind == "screaming_snake":
             if candidate.text in settings_index or candidate.text in known_env or in_code:
+                continue
+            if _is_shorthand_for_a_known_name(candidate.text, known_full_names):
                 continue
             findings.append(
                 Finding(

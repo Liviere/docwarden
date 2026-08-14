@@ -70,6 +70,35 @@ def test_dead_env_silent_when_the_variable_lives_only_in_compose(make_repo):
     assert findings == []
 
 
+def test_dead_env_silent_for_a_shorthand_suffix_of_a_known_variable(make_repo):
+    # Prose that has already spelled a variable out shortens it afterwards
+    # ("...a sufit `MAX_EDGE` pikseli"). The short form is a reference, not a
+    # second variable, so it must not read as dead.
+    root = make_repo({"src/a.py": "x = 1\n"})
+    index = build_codebase_index(root, code_extensions={".py"})
+    doc = parse("Sufit `MAX_EDGE` liczy `LAWSUIT_PHOTOS_MAX_EDGE`.\n")
+
+    findings = check_dead_symbols(
+        "docs.md", doc, index, settings_index={}, env_index={"LAWSUIT_PHOTOS_MAX_EDGE"}
+    )
+
+    assert findings == []
+
+
+def test_dead_env_suffix_match_respects_the_underscore_boundary(make_repo):
+    # `EDGE` is a suffix of the STRING but not of the NAME — silencing it
+    # would turn the rule off for any name ending in a common word.
+    root = make_repo({"src/a.py": "x = 1\n"})
+    index = build_codebase_index(root, code_extensions={".py"})
+    doc = parse("Flaga `PHOTOS_MAXEDGE` już nie działa.\n")
+
+    findings = check_dead_symbols(
+        "docs.md", doc, index, settings_index={}, env_index={"LAWSUIT_PHOTOS_MAX_EDGE"}
+    )
+
+    assert [f.rule for f in findings] == ["drift/dead-env"]
+
+
 def test_code_shaped_symbol_keeps_the_dead_symbol_rule(make_repo):
     root = make_repo({"src/a.py": "x = 1\n"})
     index = build_codebase_index(root, code_extensions={".py"})

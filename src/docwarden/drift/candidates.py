@@ -2,7 +2,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from docwarden.markdown import MarkdownDocument, iter_inline_tokens
+from docwarden.markdown import (
+    MarkdownDocument,
+    iter_inline_tokens,
+    iter_inline_tokens_with_row_head,
+)
 
 _SCREAMING_SNAKE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
 _SNAKE = re.compile(r"^_*[a-z][a-z0-9_]*$")
@@ -23,9 +27,15 @@ _DEFAULT_PAREN = re.compile(
 )
 _DEFAULT_WORD = re.compile(
     r"`([A-Z][A-Z0-9_]*)`[^`\[]{0,60}?\b(?:default|domy[sś]ln\w*)\b[^`\[]{0,20}?"
-    r"(?:\*\*)?(-?\d+(?:[.,]\d+)?|true|false)(?:\*\*)?",
+    r"(?:\*\*)?(-?\d+(?:[.,]\d+)?|true|false|on|off)(?:\*\*)?",
     re.IGNORECASE,
 )
+# States the default in words. Matching it is what makes the window STOP:
+# without these alternatives "default ON): (1) front robi…" scans past the
+# word and reports the enumeration's numeral as the claimed value. Matched,
+# then dropped — "ON" is a human word for a flag, not a literal to compare.
+_UNCOMPARABLE_VALUES = frozenset({"on", "off"})
+_ROW_KEY = re.compile(r"`([A-Z][A-Z0-9_]*)`")
 
 
 def classify_candidate(token: str) -> str | None:
@@ -42,6 +52,12 @@ def classify_candidate(token: str) -> str | None:
         return "screaming_snake"
 
     last_segment = token.rsplit("/", 1)[-1]
+    if last_segment.startswith("."):
+        # A stemless token is an extension CHAIN, not a filename: `.ocr.txt`
+        # names the class of artifacts sitting next to every processed PDF, so
+        # there is nothing to resolve against the index. Costs us dotfiles
+        # cited bare (`.eslintrc.json`); cited with a directory they still work.
+        return None
     if Path(last_segment).suffix in _PATH_EXTENSIONS:
         return "path"
     if "/" in token or "." in token:
@@ -123,11 +139,25 @@ def extract_link_candidates(doc: MarkdownDocument) -> list[Candidate]:
 def extract_settings_claims(doc: MarkdownDocument) -> list[SettingsClaim]:
     """`` `KEY` (value) `` or "`KEY` ... default **value**" claims from raw
     inline content (retains backticks/markup, which the regexes need).
+
+    Inside a table the key comes from the ROW, not from the regex — see
+    iter_inline_tokens_with_row_head for why proximity is the wrong answer.
     """
     claims = []
-    for inline_token in iter_inline_tokens(doc.tokens):
+    for inline_token, row_head in iter_inline_tokens_with_row_head(doc.tokens):
         line = (inline_token.map[0] + 1) if inline_token.map else 1
+        head_match = _ROW_KEY.search(row_head) if row_head else None
         for pattern in (_DEFAULT_PAREN, _DEFAULT_WORD):
             for m in pattern.finditer(inline_token.content):
+                if m.group(2).lower() in _UNCOMPARABLE_VALUES:
+                    continue
+                # A keyed table row is ABOUT its leading cell, so a value the
+                # description states for some other key is not this row's
+                # default — and proximity cannot tell us whose it is. Dropped
+                # rather than reattached: measured on a 17-file corpus,
+                # reattaching removed 2 false claims and invented 5 (numbers
+                # quoted mid-description landing on the row's key).
+                if head_match and head_match.group(1) != m.group(1):
+                    continue
                 claims.append(SettingsClaim(key=m.group(1), claimed_value=m.group(2), line=line))
     return claims
