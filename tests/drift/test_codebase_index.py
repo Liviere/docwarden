@@ -33,6 +33,28 @@ def test_python_declared_names_finds_function_parameters():
     assert {"archive_signatures_min_docs", "other"} <= names
 
 
+def test_python_declared_names_finds_plainly_imported_names():
+    # `from x import Y` binds Y without an asname — docs legitimately name the
+    # imported class (`AliasChoices`, `APIRoute`), so it must count as declared.
+    source = "from pydantic import AliasChoices\nimport os.path\n"
+
+    names = python_declared_names(source)
+
+    assert "AliasChoices" in names
+    assert "os" in names  # `import os.path` binds the root package
+
+
+def test_ts_declared_names_finds_imported_names():
+    source = (
+        "import { CommandModal, enqueueSnackbar } from 'twenty-sdk/ui';\n"
+        "import React from 'react';\n"
+    )
+
+    names = ts_declared_names(source)
+
+    assert {"CommandModal", "enqueueSnackbar", "React"} <= names
+
+
 def test_python_string_literal_constants_finds_identifier_shaped_strings():
     source = 'x = get(record, "folderKlienta")\n'
 
@@ -80,3 +102,11 @@ def test_build_codebase_index_aggregates_across_whole_repo(make_repo):
     assert "folderKlienta" in index.string_pool
     assert index.basenames["config.py"] == ["services/agent/app/config.py"]
     assert "docs/readme.md" in index.all_paths  # unfiltered path index sees every tracked file
+
+
+def test_build_codebase_index_records_directories(make_repo):
+    root = make_repo({"n8n/workflows/inbox/a.json": "{}\n"})
+
+    index = build_codebase_index(root, code_extensions={".py"})
+
+    assert {"n8n", "n8n/workflows", "n8n/workflows/inbox"} <= index.all_dirs

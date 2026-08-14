@@ -4,6 +4,23 @@ from pathlib import Path
 
 from docwarden.errors import ConfigError
 
+# Files that can DEFINE an environment variable without any Python seeing it:
+# compose, dotenv templates, shell, Dockerfiles, and n8n workflow JSON.
+DEFAULT_ENV_GLOBS = (
+    "*.yml",
+    "*.yaml",
+    "*.env",
+    "*.env.example",
+    "*.sh",
+    "*Dockerfile*",
+    "*.json",
+)
+
+# Rules that inform rather than block. `drift/dead-symbol` is advisory by
+# default because its oracle cannot close: prose legitimately cites symbols
+# from code we depend on but never declare, and no index will hold them.
+_DEFAULT_ADVISORY = ("drift/dead-symbol",)
+
 
 @dataclass(frozen=True)
 class FileLengthConfig:
@@ -31,6 +48,7 @@ class DriftConfig:
     doc_extensions: list[str] = field(default_factory=lambda: [".md"])
     settings_glob: str = ""
     settings_base_classes: list[str] = field(default_factory=lambda: ["BaseSettings"])
+    env_globs: list[str] = field(default_factory=lambda: list(DEFAULT_ENV_GLOBS))
 
 
 @dataclass(frozen=True)
@@ -39,6 +57,7 @@ class Config:
     drift: DriftConfig = field(default_factory=DriftConfig)
     baseline_path: str = ""
     exclude: list[str] = field(default_factory=list)
+    advisory: list[str] = field(default_factory=lambda: list(_DEFAULT_ADVISORY))
 
 
 def discover_config_path(explicit: Path | None) -> Path | None:
@@ -75,6 +94,7 @@ def load_config(path: Path) -> Config:
         drift=DriftConfig(**drift_table),
         baseline_path=table.get("baseline_path", ""),
         exclude=table.get("exclude", []),
+        advisory=list(table.get("advisory", _DEFAULT_ADVISORY)),
     )
 
 

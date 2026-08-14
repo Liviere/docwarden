@@ -46,6 +46,40 @@ def test_dead_symbol_screaming_snake_checks_settings_index_before_codebase_names
     assert check_dead_symbols("docs.md", doc, codebase_index, settings_index) == []
 
 
+def test_screaming_snake_unknown_everywhere_is_reported_as_dead_env(make_repo):
+    # Env-shaped names get their own rule because their oracle is exact:
+    # Settings ∪ env surfaces ∪ code names. This one exists nowhere.
+    root = make_repo({"src/a.py": "x = 1\n"})
+    index = build_codebase_index(root, code_extensions={".py"})
+    doc = parse("Flaga `ARCHIVE_LONG_GONE` już nie działa.\n")
+
+    findings = check_dead_symbols("docs.md", doc, index, settings_index={}, env_index=set())
+
+    assert [f.rule for f in findings] == ["drift/dead-env"]
+
+
+def test_dead_env_silent_when_the_variable_lives_only_in_compose(make_repo):
+    root = make_repo({"src/a.py": "x = 1\n"})
+    index = build_codebase_index(root, code_extensions={".py"})
+    doc = parse("Ustaw `EXECUTIONS_DATA_PRUNE` na true.\n")
+
+    findings = check_dead_symbols(
+        "docs.md", doc, index, settings_index={}, env_index={"EXECUTIONS_DATA_PRUNE"}
+    )
+
+    assert findings == []
+
+
+def test_code_shaped_symbol_keeps_the_dead_symbol_rule(make_repo):
+    root = make_repo({"src/a.py": "x = 1\n"})
+    index = build_codebase_index(root, code_extensions={".py"})
+    doc = parse("Wywołuje `compute_missing()`.\n")
+
+    findings = check_dead_symbols("docs.md", doc, index, settings_index={}, env_index=set())
+
+    assert [f.rule for f in findings] == ["drift/dead-symbol"]
+
+
 def test_dead_path_fires_for_missing_bare_filename(make_repo):
     root = make_repo({"src/real.py": "x = 1\n"})
     index = build_codebase_index(root, code_extensions={".py"})
@@ -82,6 +116,17 @@ def test_dead_path_link_fires_for_missing_relative_target(make_repo):
 
     assert len(findings) == 1
     assert findings[0].rule == "drift/dead-path"
+
+
+def test_dead_path_link_to_a_directory_is_not_dead(make_repo):
+    # Docs link to directories ("the workflows live in n8n/workflows/inbox/").
+    # The path index holds files only, so without a directory set every such
+    # link reads as broken.
+    root = make_repo({"docs/guide.md": "x", "n8n/workflows/inbox/a.json": "{}\n"})
+    index = build_codebase_index(root, code_extensions={".py"})
+    doc = parse("See [inbox](../n8n/workflows/inbox/).\n")
+
+    assert check_dead_paths("docs/guide.md", root, doc, index) == []
 
 
 def test_stale_default_fires_when_claimed_value_differs(make_repo):

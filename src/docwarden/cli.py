@@ -27,6 +27,9 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--baseline", default=None, help="ścieżka do pliku baseline")
     parser.add_argument("--config", type=Path, default=None, help="jawna ścieżka do pyproject.toml")
     parser.add_argument("--exclude", action="append", default=None, help="wzorzec fnmatch do wykluczenia")
+    parser.add_argument(
+        "--advisory", action="store_true", help="pokaż też znaleziska doradcze (nie bramkują)"
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -86,6 +89,14 @@ def main(argv: list[str] | None = None) -> int:
         findings = drift.run(args.paths, repo_root, rule_config, excludes=excludes)
         default_baseline_name = ".docwarden-baseline-drift"
 
+    # Advisory rules are split off BEFORE anything baseline-related: they must
+    # not enter the file, must not be reported as new or stale, and must not
+    # move the exit code. Otherwise a rule nobody can act on keeps the gate red
+    # and the baseline unreadable.
+    advisory_rules = set(config.advisory)
+    advisory_findings = [f for f in findings if f.rule in advisory_rules]
+    findings = [f for f in findings if f.rule not in advisory_rules]
+
     baseline_path = Path(args.baseline) if args.baseline else (repo_root / default_baseline_name)
     current = {entry_key(f) for f in findings}
 
@@ -95,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.stats:
-        print(format_stats(findings))
+        print(format_stats(findings + advisory_findings))  # triage sees the whole picture
         return 0
 
     baseline = load_baseline(baseline_path)
@@ -112,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.format == "json":
         if new_findings:
             print(format_json(new_findings))
+        if args.advisory and advisory_findings:
+            print(format_json(advisory_findings))
     else:
         if new_findings:
             print(format_text(new_findings))
@@ -119,5 +132,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\nNIEAKTUALNE wpisy baseline ({len(stale_keys)}) — usuń przez --prune:")
             for entry in sorted(stale_keys):
                 print(f"  {entry}")
+        if args.advisory and advisory_findings:
+            print(f"\nDORADCZO ({len(advisory_findings)}) — nie bramkuje, nie wchodzi do baseline:")
+            print(format_text(advisory_findings))
 
     return 1 if (new_keys or stale_keys) else 0

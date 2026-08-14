@@ -29,6 +29,17 @@ def test_classify_rejects_all_caps_error_codes_and_noise():
     assert classify_candidate("od case corekta.wykonaj") is None  # contains spaces
 
 
+def test_classify_rejects_placeholder_and_glob_tokens():
+    # Prose writes patterns, not names: a token carrying a placeholder or a
+    # glob describes a FAMILY of files, so resolving it against the index is
+    # meaningless. No real identifier or path contains these characters.
+    assert classify_candidate("{stem}.ocr.txt") is None
+    assert classify_candidate("src/objects/<name>.ts") is None
+    assert classify_candidate("*.json") is None
+    assert classify_candidate("…_plik.json") is None
+    assert classify_candidate("services/agent/app/{main,crm_twenty}.py") is None
+
+
 def test_extract_symbol_candidates_from_code_inline_tokens():
     doc = parse("Patrz `_python_identifiers` oraz `ADR` i `client_folders.py`.\n")
 

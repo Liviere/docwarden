@@ -71,7 +71,19 @@ def test_density_stats_mode_exits_zero_regardless_of_findings(make_repo, monkeyp
     assert "a.md" in capsys.readouterr().out
 
 
-def test_drift_command_reports_dead_symbol(make_repo, monkeypatch, capsys):
+def test_drift_command_reports_dead_env(make_repo, monkeypatch, capsys):
+    root = make_repo({"src/a.py": "x = 1\n", "docs.md": "Flaga `ARCHIVE_LONG_GONE`.\n"})
+    monkeypatch.chdir(root)
+
+    code = main(["drift", "--paths", "docs.md"])
+
+    assert code == 1
+    assert "drift/dead-env" in capsys.readouterr().out
+
+
+def test_advisory_rule_neither_gates_nor_prints_by_default(make_repo, monkeypatch, capsys):
+    # dead-symbol is advisory: the code-symbol oracle cannot see third-party
+    # names the docs legitimately cite, so it informs rather than blocks.
     root = make_repo(
         {
             "src/a.py": "def compute_total():\n    pass\n",
@@ -82,8 +94,55 @@ def test_drift_command_reports_dead_symbol(make_repo, monkeypatch, capsys):
 
     code = main(["drift", "--paths", "docs.md"])
 
-    assert code == 1
+    assert code == 0
+    assert "drift/dead-symbol" not in capsys.readouterr().out
+
+
+def test_advisory_flag_prints_advisory_findings_without_changing_exit_code(
+    make_repo, monkeypatch, capsys
+):
+    root = make_repo(
+        {
+            "src/a.py": "def compute_total():\n    pass\n",
+            "docs.md": "Wywołuje `compute_missing()`.\n",
+        }
+    )
+    monkeypatch.chdir(root)
+
+    code = main(["drift", "--paths", "docs.md", "--advisory"])
+
+    assert code == 0
     assert "drift/dead-symbol" in capsys.readouterr().out
+
+
+def test_advisory_findings_never_enter_the_baseline(make_repo, monkeypatch, capsys):
+    root = make_repo(
+        {
+            "src/a.py": "def compute_total():\n    pass\n",
+            "docs.md": "Wywołuje `compute_missing()`.\n",
+        }
+    )
+    monkeypatch.chdir(root)
+
+    main(["drift", "--seed", "--paths", "docs.md"])
+
+    assert "drift/dead-symbol" not in (root / ".docwarden-baseline-drift").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_advisory_list_is_configurable(make_repo, monkeypatch, capsys):
+    # Same lever must work the other way round: demote a gating rule.
+    root = make_repo(
+        {
+            "pyproject.toml": '[tool.docwarden]\nadvisory = ["drift/dead-env"]\n',
+            "src/a.py": "x = 1\n",
+            "docs.md": "Flaga `ARCHIVE_LONG_GONE`.\n",
+        }
+    )
+    monkeypatch.chdir(root)
+
+    assert main(["drift", "--paths", "docs.md"]) == 0
 
 
 def test_config_file_thresholds_are_applied(make_repo, monkeypatch, capsys):

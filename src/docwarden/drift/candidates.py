@@ -7,7 +7,11 @@ from docwarden.markdown import MarkdownDocument, iter_inline_tokens
 _SCREAMING_SNAKE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
 _SNAKE = re.compile(r"^_*[a-z][a-z0-9_]*$")
 _CAMEL = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
-_NOISE = re.compile(r"[\s\"'$]")
+# Whitespace/quotes/`$` are shell-or-prose noise; braces, angle brackets, `*`,
+# `,` and `…` mark a PATTERN rather than a name (`{stem}.ocr.txt`,
+# `src/objects/<name>.ts`, `*.json`) — resolving a family of files against the
+# index is meaningless, so these never reach a rule.
+_NOISE = re.compile(r"[\s\"'${}<>*,…]")
 
 _PATH_EXTENSIONS = {
     ".py", ".ts", ".tsx", ".js", ".mjs", ".md", ".json", ".yml", ".yaml",

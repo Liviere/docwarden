@@ -16,14 +16,49 @@ def check_dead_symbols(
     doc: MarkdownDocument,
     codebase_index: CodebaseIndex,
     settings_index: dict[str, list[FieldInfo]],
+    env_index: set[str] | None = None,
 ) -> list[Finding]:
+    """Two rules from one sweep, split by candidate SHAPE — because the two
+    shapes have oracles of very different quality.
+
+    An env-shaped name (``SCREAMING_SNAKE``) can be resolved exactly: it is
+    either a ``Settings`` field, or it appears on one of the environment
+    surfaces, or it is a constant in the code. Nothing else can define it, so
+    a miss means it genuinely exists nowhere — reported as ``drift/dead-env``.
+
+    A code-shaped name has no such closure: docs legitimately cite third-party
+    symbols the project never imports (LangChain classes, Twenty enums, n8n
+    node types), and no index will ever contain them. That verdict stays
+    ``drift/dead-symbol`` and is meant to be run advisory (see ``Config.advisory``).
+    """
+    known_env = env_index or set()
     findings = []
     for candidate in extract_symbol_candidates(doc):
         if candidate.kind == "path":
             continue  # handled by check_dead_paths
-        if candidate.kind == "screaming_snake" and candidate.text in settings_index:
-            continue  # env-var-style mention of a real Settings field
-        if candidate.text in codebase_index.names or candidate.text in codebase_index.string_pool:
+        in_code = (
+            candidate.text in codebase_index.names
+            or candidate.text in codebase_index.string_pool
+        )
+        if candidate.kind == "screaming_snake":
+            if candidate.text in settings_index or candidate.text in known_env or in_code:
+                continue
+            findings.append(
+                Finding(
+                    path=rel_path,
+                    line=candidate.line,
+                    end_line=candidate.line,
+                    rule="drift/dead-env",
+                    message=(
+                        f"`{candidate.text}` nie istnieje — ani w Settings, ani w środowisku, "
+                        f"ani w kodzie"
+                    ),
+                    snippet=candidate.text,
+                    fingerprint=candidate.text,
+                )
+            )
+            continue
+        if in_code:
             continue
         findings.append(
             Finding(
@@ -42,7 +77,9 @@ def check_dead_symbols(
 def _bare_path_exists(text: str, index: CodebaseIndex) -> bool:
     if "/" not in text:
         return text in index.basenames
-    return any(p == text or p.endswith("/" + text) for p in index.all_paths)
+    return any(
+        p == text or p.endswith("/" + text) for p in (*index.all_paths, *index.all_dirs)
+    )
 
 
 def check_dead_paths(
@@ -73,8 +110,9 @@ def check_dead_paths(
             target_rel = (doc_dir / candidate.text).resolve().relative_to(repo_root.resolve())
         except ValueError:
             continue  # points outside the repo entirely — not our concern
-        if target_rel.as_posix() in codebase_index.all_paths:
-            continue
+        target = target_rel.as_posix()
+        if target in codebase_index.all_paths or target in codebase_index.all_dirs:
+            continue  # docs link to directories as often as to files
         findings.append(
             Finding(
                 path=rel_path,
